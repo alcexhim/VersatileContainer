@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-
+using UniversalEditor.Compression;
+using UniversalEditor.IO;
 using UniversalEditor.ObjectModels.FileSystem;
 using UniversalEditor.ObjectModels.VersatileContainer;
 using UniversalEditor.ObjectModels.VersatileContainer.Sections;
@@ -51,7 +52,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 
 			if (mvarFormatVersion.Major > 1)
 			{
-				long oldPosition = br.BaseStream.Position;
+				long oldPosition = br.Accessor.Position;
 				long numberOfPropertiesInFile = (long)ReadUnum(br);
 
 				long[] propertyNameLengths = new long[numberOfPropertiesInFile];
@@ -73,7 +74,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 					string propertyValue = br.ReadFixedLengthString(propertyValueLength);
 					mvarProperties.Add(propertyName, propertyValue);
 				}
-				long newPosition = br.BaseStream.Position;
+				long newPosition = br.Accessor.Position;
 
 				long totalSizeOfBlock = (newPosition - oldPosition);
 				if ((mvarSectionAlignment - totalSizeOfBlock) > 0)
@@ -117,7 +118,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 				ulong sectionRemainder = sectionPhysicalSize - sectionVirtualSize;
 
 				byte[] sectionData = br.ReadBytes(sectionVirtualSize);
-				br.BaseStream.Seek((long)sectionRemainder, System.IO.SeekOrigin.Current);
+				br.Accessor.Seek((long)sectionRemainder, SeekOrigin.Current);
 
 				Compression.CompressionMethod sectionCompression = (Compression.CompressionMethod)sectionCompressions.GetValue(i);
 
@@ -125,10 +126,9 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 				{
 					if (sectionCompression != Compression.CompressionMethod.None)
 					{
-						CompressedFile section = new CompressedFile();
-						section.CompressionMethod = sectionCompression;
+						File section = new File();
 						section.Name = sectionName;
-						byte[] data = Compression.CompressionStream.Decompress(sectionCompression, sectionData);
+						byte[] data = CompressionModule.FromKnownCompressionMethod(sectionCompression).Decompress(sectionData);
 						section.SetDataAsByteArray(data);
 						fsom.Files.Add(section);
 					}
@@ -147,7 +147,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 						VersatileContainerContentSection section = new VersatileContainerContentSection();
 						// section.CompressionMethod = sectionCompression;
 						section.Name = sectionName;
-						byte[] data = Compression.CompressionStream.Decompress(sectionCompression, sectionData);
+						byte[] data = CompressionModule.FromKnownCompressionMethod(sectionCompression).Decompress(sectionData);
 						section.Data = data;
 						vcom.Sections.Add(section);
 					}
@@ -198,10 +198,10 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 		{
 			switch (mvarBytesPerNUMBER)
 			{
-				case 1: bw.Write((byte)value); return;
-				case 2: bw.Write((ushort)value); return;
-				case 4: bw.Write((uint)value); return;
-				case 8: bw.Write((ulong)value); return;
+				case 1: bw.WriteByte((byte)value); return;
+				case 2: bw.WriteUInt16((ushort)value); return;
+				case 4: bw.WriteUInt32((uint)value); return;
+				case 8: bw.WriteUInt64((ulong)value); return;
 			}
 			throw new ArgumentOutOfRangeException();
 		}
@@ -209,24 +209,24 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 		{
 			switch (mvarBytesPerNUMBER)
 			{
-				case 1: bw.Write((byte)value); return;
-				case 2: bw.Write((short)value); return;
-				case 4: bw.Write((int)value); return;
-				case 8: bw.Write((long)value); return;
+				case 1: bw.WriteByte((byte)value); return;
+				case 2: bw.WriteInt16((short)value); return;
+				case 4: bw.WriteInt32((int)value); return;
+				case 8: bw.WriteInt64((long)value); return;
 			}
 			throw new ArgumentOutOfRangeException();
 		}
 
 		protected override void SaveInternal(ObjectModel objectModel)
 		{
-			IO.Writer bw = base.Stream.Writer;
+			IO.Writer bw = base.Accessor.Writer;
 			FileSystemObjectModel fsom = (objectModel as FileSystemObjectModel);
 			VersatileContainerObjectModel vcom = (objectModel as VersatileContainerObjectModel);
 
 			bw.WriteFixedLengthString("Versatile Container file 0001\0");
-			bw.Write(mvarFormatVersion);
-			bw.Write(mvarSectionAlignment);
-			bw.Write(mvarBytesPerNUMBER);
+			bw.WriteVersion(mvarFormatVersion);
+			bw.WriteUInt32(mvarSectionAlignment);
+			bw.WriteUInt32(mvarBytesPerNUMBER);
 			if (fsom != null)
 			{
 				bw.WriteFixedLengthString(fsom.Title, 64);
@@ -239,7 +239,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 			#region Properties/Metadata (Versatile Container V2)
 			if (mvarFormatVersion.Major > 1)
 			{
-				long oldPosition = bw.BaseStream.Position;
+				long oldPosition = bw.Accessor.Position;
 				WriteUnum(bw, (ulong)mvarProperties.Count);
 				foreach (VersatileContainerProperty property in mvarProperties)
 				{
@@ -251,13 +251,13 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 					bw.WriteFixedLengthString(property.Name);
 					bw.WriteFixedLengthString(property.Value);
 				}
-				long newPosition = bw.BaseStream.Position;
+				long newPosition = bw.Accessor.Position;
 
 				long totalSizeOfBlock = (newPosition - oldPosition);
 				if ((mvarSectionAlignment - totalSizeOfBlock) > 0)
 				{
 					byte[] padding = new byte[mvarSectionAlignment - totalSizeOfBlock];
-					bw.Write(padding);
+					bw.WriteBytes(padding);
 				}
 			}
 			#endregion
@@ -274,11 +274,11 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 			ulong sectionOffset = 0;
 			if (fsom != null)
 			{
-				sectionOffset = (ulong)(bw.BaseStream.Position + ((32 + (mvarBytesPerNUMBER * 3)) * fsom.Files.Count));
+				sectionOffset = (ulong)(bw.Accessor.Position + ((32 + (mvarBytesPerNUMBER * 3)) * fsom.Files.Count));
 			}
 			else if (vcom != null)
 			{
-				sectionOffset = (ulong)(bw.BaseStream.Position + ((32 + (mvarBytesPerNUMBER * 3)) * vcom.Sections.Count));
+				sectionOffset = (ulong)(bw.Accessor.Position + ((32 + (mvarBytesPerNUMBER * 3)) * vcom.Sections.Count));
 			}
 
 			byte[][] realDatas = null;
@@ -296,11 +296,12 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 				foreach (File section in fsom.Files)
 				{
 					byte[] data = section.GetDataAsByteArray();
-					if (section is CompressedFile)
+                    /*
+					if (section is File)
 					{
-						data = Compression.CompressionStream.Compress((section as CompressedFile).CompressionMethod, data);
+						data = Compression.CompressionStream.Compress((section as File).CompressionMethod, data);
 					}
-
+                    */
 					ulong sectionVirtualSize = (ulong)data.Length;
 					realDatas[fsom.Files.IndexOf(section)] = data;
 
@@ -318,14 +319,16 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 					WriteUnum(bw, sectionVirtualSize);
 					WriteUnum(bw, sectionPhysicalSize);
 
-					if (section is CompressedFile)
+                    /*
+					if (section is File)
 					{
-						bw.Write((int)((section as CompressedFile).CompressionMethod));
+						bw.WriteInt32((int)((section as File).CompressionMethod));
 					}
 					else
 					{
-						bw.Write((int)Compression.CompressionMethod.None);
-					}
+                    */
+					bw.WriteInt32((int)Compression.CompressionMethod.None);
+                    // }
 
 					sectionOffset += sectionPhysicalSize;
 				}
@@ -345,7 +348,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 					byte[] sectionData = new byte[sectionPhysicalSize];
 					Array.Copy(realData, 0, sectionData, 0, (long)sectionVirtualSize);
 
-					bw.Write(sectionData);
+					bw.WriteBytes(sectionData);
 				}
 			}
 			else if (vcom != null)
@@ -375,7 +378,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 						WriteUnum(bw, sectionVirtualSize);
 						WriteUnum(bw, sectionPhysicalSize);
 
-						bw.Write((int)Compression.CompressionMethod.None);
+						bw.WriteInt32((int)Compression.CompressionMethod.None);
 
 						sectionOffset += sectionPhysicalSize;
 					}
@@ -395,7 +398,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
 					byte[] sectionData = new byte[sectionPhysicalSize];
 					Array.Copy(realData, 0, sectionData, 0, (long)sectionVirtualSize);
 
-					bw.Write(sectionData);
+					bw.WriteBytes(sectionData);
 				}
 			}
 			bw.Flush();

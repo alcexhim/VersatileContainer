@@ -30,7 +30,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
             VersatileContainerObjectModel vcom = (objectModel as VersatileContainerObjectModel);
             if (vcom == null) return;
 
-            IO.Reader br = base.Stream.Reader;
+            IO.Reader br = base.Accessor.Reader;
             string signature = br.ReadFixedLengthString(30);    // Versatile Container file 0002
             signature = signature.TrimNull();
             if (signature != "Versatile Container file 0002") throw new InvalidDataFormatException();
@@ -127,12 +127,12 @@ namespace UniversalEditor.DataFormats.VersatileContainer
             VersatileContainerObjectModel vcom = (objectModel as VersatileContainerObjectModel);
             if (vcom == null) return;
 
-            IO.Writer bw = base.Stream.Writer;
+            IO.Writer bw = base.Accessor.Writer;
             bw.WriteNullTerminatedString("Versatile Container file 0002");
-            bw.Write(mvarFormatVersion);
+            bw.WriteVersion(mvarFormatVersion);
             bw.WriteNullTerminatedString(vcom.Title);
 
-            bw.Write((uint)vcom.Properties.Count);
+            bw.WriteUInt32((uint)vcom.Properties.Count);
 
             // get a list of section class names
             List<string> sectionClassNames = new List<string>();
@@ -144,9 +144,9 @@ namespace UniversalEditor.DataFormats.VersatileContainer
                     if (!sectionClassNames.Contains(sect.ClassName)) sectionClassNames.Add(sect.ClassName);
                 }
             }
-            bw.Write((uint)sectionClassNames.Count);
+            bw.WriteUInt32((uint)sectionClassNames.Count);
 
-            bw.Write((uint)vcom.Sections.Count);
+            bw.WriteUInt32((uint)vcom.Sections.Count);
 
             #region Section Class Entries
             foreach (string sectionClassName in sectionClassNames)
@@ -160,7 +160,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
             foreach (VersatileContainerSection section in vcom.Sections)
             {
                 VersatileContainerSectionType sectionType = VersatileContainerSectionType.Section; // (VersatileContainerSectionType)br.ReadUInt32();
-                bw.Write((uint)sectionType);
+                bw.WriteUInt32((uint)sectionType);
 
                 bw.WriteNullTerminatedString(section.Name);
                 if (section is VersatileContainerBlankSection)
@@ -169,14 +169,14 @@ namespace UniversalEditor.DataFormats.VersatileContainer
                 else if (section is VersatileContainerContentSection)
                 {
                     VersatileContainerContentSection sect = (section as VersatileContainerContentSection);
-                    bw.Write((uint)sect.Data.LongLength);
+                    bw.WriteUInt32((uint)sect.Data.LongLength);
                     if (!String.IsNullOrEmpty(sect.ClassName))
                     {
-                        bw.Write(sectionClassNames.IndexOf(sect.ClassName));
+                        bw.WriteUInt32((uint)sectionClassNames.IndexOf(sect.ClassName));
                     }
                     else
                     {
-                        bw.Write((uint)0xFFFFFFFF);
+                        bw.WriteUInt32((uint)0xFFFFFFFF);
                     }
                 }
                 else if (section is VersatileContainerDirectorySection)
@@ -186,7 +186,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
                 else if (section is VersatileContainerReferenceSection)
                 {
                     VersatileContainerReferenceSection sect = (section as VersatileContainerReferenceSection);
-                    bw.Write((uint)vcom.Sections.IndexOf(sect.Target));
+                    bw.WriteUInt32((uint)vcom.Sections.IndexOf(sect.Target));
                 }
             }
             #endregion
@@ -195,7 +195,7 @@ namespace UniversalEditor.DataFormats.VersatileContainer
                 if (section is VersatileContainerContentSection)
                 {
                     VersatileContainerContentSection sect = (section as VersatileContainerContentSection);
-                    bw.Write(sect.Data);
+                    bw.WriteBytes(sect.Data);
                 }
             }
         }
